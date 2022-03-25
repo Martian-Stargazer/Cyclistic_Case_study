@@ -1,0 +1,364 @@
+---
+title: "Cyclistic Case Study"
+author: "Ian Morris"
+date: '2022-03-25'
+output: html_document
+---
+
+# Introduction
+Hello, my name is Ian. This is a case study I've completed for the Google Data Analytics Career Program. It is for a fictional company, Cyclistic, and uses real world data from [Divvy](https://divvybikes.com/) under this [license](https://ride.divvybikes.com/data-license-agreement). This is the first case study I've completed and it's been an invaluable learning experience. Unfortunately I did run into some blocks that I was unable to overcome under the circumstances. Specifically these were in cases when I needed more information about the data and usage of bikes, but was unable to get help from classmates or mentors, or find the answers online. There is also definitely more that I would like to do and explore with this data or the creation of case studies in general, and I hope to build upon this foundation in the future. Thank you for your interest in my work.
+
+## Background
+Cyclistic is a bike-share program in the Chicago area, featuring more than 5,800 bicycles and 600 docking stations. There are three methods of purchasing the usage of a bike: single-ride passes, full-day passes, and annual memberships. Single-ride pass and full-day pass users are collectively referred to as "casual riders." The company's finance analysts have determined that annual members are significantly more profitable than casual riders. The marketing director believes that maximizing the number of annual members will be the key to future growth and that there is a strong possibility of converting casual riders into annual members. They're interested in analyzing Cyclistic's historical bike trip data to identify trends.
+
+## Business Task
+Determine any key differences in bike usage between the two major types of customers: annual members and casual riders, allowing Cyclistic to understand why casual riders would purchase an annual members. Following that, Cyclistic can then determine the best ways to encourage casual riders to become annual members, increasing growth.
+
+## Data Preparation
+The data is the previous 12 months of Cyclistic bike trip data, from March 2021 to February 2022. It is initially organized into 12 separate excel spreadsheets, 1 for each month. Column data includes a unique ride id, bike type, ride start and end date-time, ride start and end station name and id where applicable, ride start and end latitude and longitude, and membership type. Having looked through some of the spreadsheets, it is apparent that there are some potential issues with the data. There are missing values in the start and end station name and id columns.
+
+All personal information was removed prior to accessing the data to follow data privacy guidelines. The data was stored in a cloud service for ease of access. No further security steps were taken as this is a publicly accessible data set with no personal information. Backups of the original data were stored in a separate folder.
+
+## Data Processing
+Some information, including station data and end gps coordinates for some trips is absent. There are also some unusual starting position gps coordinates that appear to be significantly outside the Chicago area.
+
+### Preparing to work in R
+I've loaded the tidyverse and janitor libraries for working with the data set. Following that, I've loaded the spreadsheets from each month into R, and then combined them into a single data frame. I then reviewed the structure and values of the data to better understand the data and look for any obvious anomalies.
+
+```{r Setup, message=FALSE, warning=FALSE, include=FALSE}
+#Setup libraries
+library(tidyverse)
+library(janitor)
+library(lubridate)
+
+#Load data from spreadsheets
+cyc_df_2021_03 <- read_csv("202103-divvy-tripdata.csv")
+cyc_df_2021_04 <- read_csv("202104-divvy-tripdata.csv")
+cyc_df_2021_05 <- read_csv("202105-divvy-tripdata.csv")
+cyc_df_2021_06 <- read_csv("202106-divvy-tripdata.csv")
+cyc_df_2021_07 <- read_csv("202107-divvy-tripdata.csv")
+cyc_df_2021_08 <- read_csv("202108-divvy-tripdata.csv")
+cyc_df_2021_09 <- read_csv("202109-divvy-tripdata.csv")
+cyc_df_2021_10 <- read_csv("202110-divvy-tripdata.csv")
+cyc_df_2021_11 <- read_csv("202111-divvy-tripdata.csv")
+cyc_df_2021_12 <- read_csv("202112-divvy-tripdata.csv")
+cyc_df_2022_01 <- read_csv("202201-divvy-tripdata.csv")
+cyc_df_2022_02 <- read_csv("202202-divvy-tripdata.csv")
+
+#combine files into single dataframe
+cyc_df_combined <- rbind(cyc_df_2021_03,cyc_df_2021_04,cyc_df_2021_05,cyc_df_2021_06,cyc_df_2021_07,cyc_df_2021_08,cyc_df_2021_09,cyc_df_2021_10,cyc_df_2021_11,cyc_df_2021_12,cyc_df_2022_01,cyc_df_2022_02)
+```
+
+```{r Reviewing Data, eval=FALSE, include=FALSE}
+#checking structure of dataframe
+str(cyc_df_combined)
+#5,667,986 rows of data.
+colnames(cyc_df_combined)
+
+#checking for unique values
+unique(cyc_df_combined$rideable_type)
+#classic_bike, electric_bike, docked_bike
+unique(cyc_df_combined$member_casual)
+#member, casual.
+
+#check that all ride id's are unique
+length(unique(cyc_df_combined$ride_id))
+#matches expected value of 5,667,986.
+
+summary(cyc_df_combined)
+#summary shows there are 4,617 null values in the end_lat and end_lng.
+#There is also an usual gps value for the start coordinates.
+#I want to check when the NA values are for the end coordinates, if they're localized to a specific month or spread out.
+#I also know there are empty station fields for some bikes but it isn't showing up in the summary.
+```
+
+### Further investigation of data anomalies
+Reviewing the data, there are some notable anomalies. There are 4,617 NA values for the end latitude and longitude. There are also missing values for the station name and id for many entries, roughly 12% of the data set. There is also an anomalous maximum value for the starting latitude and longitude.
+
+For the start and end station names and id’s, there are about 750,000 missing values in all 4 columns. I’m interested if there’s any additional unifying characteristic for these, or if perhaps the station values can be added. I've reached out to my "colleagues" (classmates and mentors) for assistance to see if they know why these values are missing. My initial hypothesis was that my assumption that all bikes had to be docked or undocked from a station was incorrect, but after further investigation, I found that bikes are required to be docked at the end of a ride. This leads me to the hypothesis that the station names were simply not recorded for these entries. I then checked to see if there was any relationship between gps coordinates and stations, but there doesn't appear to be. I checked if membership type might have any relationship, and found it was a fairly even split of 45% casual riders and 55% members. I checked if the bike type was related, and found that all missing start and almost all missing end stations were for the electric bike type. Later, after calculating new fields, I checked if there was a time period, looking at months first, and found that it roughly correlates with increased rides.
+
+With the missing end location gps coordinates, I also reached out for assistance to see if there was a known explanation for these, but unfortunately I haven't heard back yet as of writing this. I looked into these entries further, and I found that many of them have ride lengths in excess of 24 hours, which seems to be an unlikely amount of time to be riding a bike. These entries do not seem to be reliable sources of information, and I have proceeded to remove them.
+
+The anomalous start location that is far outside the other values appears to be from a test station. It is only one value, and can be safely removed without affecting the results of the analysis. This should be done, given that it appears to be a test case outside of the data we’re interested in. 
+
+```{r Investigating, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Investigating anomalous values
+summary(cyc_df_combined)
+
+#Looking at the missing station names and id's.
+sum(is.na(cyc_df_combined$start_station_name))
+sum(is.na(cyc_df_combined$start_station_id))
+sum(is.na(cyc_df_combined$end_station_name))
+sum(is.na(cyc_df_combined$end_station_id))
+#There are approximately 750,000 rows for either missing start or end station data, a little more than 10% of the total dataset. 
+
+#Checking to see if there was any relation with coordinates and station names. I'm wondering if the missing station names relate to existing stations.
+cyc_df_comb_clean %>% group_by(start_station_name, start_lat, start_lng) %>% summarise(n = n()) %>% arrange(-n) %>% head(30)
+
+#Is there any correlation between these and membership type?
+#nrow(cyc_df_combined[is.na(cyc_df_combined$start_station_name) & cyc_df_combined$member_casual == 'member',])
+cyc_df_combined %>% subset(is.na(start_station_name)) %>% group_by(member_casual) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n))
+#No, it is fairly evenly split, 45% are casual, 55% are members.
+
+#Is there a bike type that isn't recording these?
+cyc_df_combined %>% subset(is.na(start_station_name)) %>% group_by(rideable_type) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n))
+#Yes, they are all electric bikes.
+#Same for end station?
+cyc_df_combined %>% subset(is.na(end_station_name)) %>% group_by(rideable_type) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n))
+#Very nearly, 99% are electric bike, with about 1% classic bikes, and a very small fraction being docked bikes.
+
+#Investigating the missing gps coordinate rows. I want to find out if there is any need to remove these.
+head(cyc_df_combined[is.na(cyc_df_combined$end_lat),])
+summary(cyc_df_combined[is.na(cyc_df_combined$end_lat),])
+#Looking at the summary, there isn't any obvious connection between these entries. They occur throughout the past year, starting at a variety of locations.
+nrow(cyc_df_combined[is.na(cyc_df_combined$end_lat) & cyc_df_combined$member_casual == 'member',])
+#It looks like there are about 3,522 casual entries and 1,095 member entries.
+#These values may not present a major issue for the data, as they are a very small portion of the overall data set and they appear to be fairly random.
+
+#Investigating the anomalous max start gps coordinates.
+cyc_df_combined[cyc_df_combined$start_lat > 43,]
+#It appears this is a single entry and was from a test station away from the city. This entry should be removed.
+```
+
+The results of this processing were saved as a new data frame before proceeding to preserve the original data.
+
+```{r Run Data Cleaning Code, include=FALSE}
+#Removing the test entry and any entries with missing end coordinate values. The rides with missing end values seem potentially unreliable and make up a small portion of the data set. Saving into new data frame.
+cyc_df_comb_clean <- subset(cyc_df_combined, start_lat != max(cyc_df_combined$start_lat))
+cyc_df_comb_clean <- cyc_df_comb_clean %>% drop_na(end_lat)
+summary(cyc_df_comb_clean)
+```
+
+### Creating new columns
+To proceed with the analysis, there are some additional values I'm interested in that need to be calculated. These are the start and end times for each ride, created from the started at and ended at columns that have date and time information. There is the ride length, which is the time difference between the start and end times. There is the change in latitude, change in longitude and change total fields, created by finding the difference between the start and end gps coordinates and finding the distance between the two points. There is the starting and ending day of the week, found from the date-time column. There is the start month, which is the month the ride began in, and in most cases the month the ride ended in.
+
+```{r Calculating new values, include=FALSE}
+#Create start and end time columns, create ride length column, create ride distance column, create day of week column, create start_month column for the month the ride takes place in.
+cyc_df_comb_clean$started_at_time <- hms::as_hms(cyc_df_comb_clean$started_at)
+cyc_df_comb_clean$ended_at_time <- hms::as_hms(cyc_df_comb_clean$ended_at)
+cyc_df_comb_clean$ride_length <- hms::as_hms(cyc_df_comb_clean$ended_at - cyc_df_comb_clean$started_at)
+cyc_df_comb_clean$change_lat <- abs(cyc_df_comb_clean$end_lat - cyc_df_comb_clean$start_lat)
+cyc_df_comb_clean$change_lng <- abs(cyc_df_comb_clean$end_lng - cyc_df_comb_clean$start_lng)
+cyc_df_comb_clean$change_tot <- sqrt(cyc_df_comb_clean$change_lat^2 + cyc_df_comb_clean$change_lng^2)
+cyc_df_comb_clean$start_wday <- wday(cyc_df_comb_clean$started_at,label=TRUE,abbr=TRUE)
+cyc_df_comb_clean$end_wday <- wday(cyc_df_comb_clean$ended_at,label=TRUE,abbr=TRUE)
+cyc_df_comb_clean$start_month <- month(cyc_df_comb_clean$started_at)
+cyc_df_comb_clean$start_month_name <- month(cyc_df_comb_clean$started_at,label=TRUE,abbr=TRUE)
+#check the summary again
+#cyc_df_comb_clean(cyc_df_combined)
+#head(cyc_df_comb_clean)
+
+#Checking ride length
+#hms::as_hms(max(cyc_df_comb_clean$ride_length))
+#summary(cyc_df_comb_clean[cyc_df_comb_clean$ride_length > 1*86400,])
+#I've also noticed that some ride lengths are in excess of 1 month, which is extreme. There are also about 4,038 rides over a day long. Reviewing the company policies, it looks like the longest ride is the 3 hour rides for day passes, though you can go beyond 3 hours while incurring a fee.
+
+#unique(cyc_df_combined$start_wday)
+#Quick check that weekday function worked and that there are 7 days in the data, and that they are abbreviated days.
+
+#While looking at the minimum values for ride length, I found there were negative values in the data set.
+#subset(cyc_df_comb_clean, ride_length < 0)
+#Removed entries with ride length less than 0.
+cyc_df_comb_clean <- subset(cyc_df_comb_clean, ride_length >= 0)
+
+#Is there a time relationship with the missing station names?
+cyc_df_comb_clean %>% subset(is.na(start_station_name)) %>% group_by(start_month) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n))
+#No, it seems to roughly correlate with increased riders.
+```
+### Checking newly calculated values
+I wanted to check the newly created columns, ride length in particular, to see if there was anything unusual. I found that there are about 4,000 rides that are longer than 24 hours. I can’t say for certain the context these rides occurred in, but they are a relatively small portion of the overall data. These values seem very unrealistic. I also see that most of the missing end location gps coordinates are present for these unusual ride length entries. For entries with values over 24 hours in ride length, 2,721 of the 4,038 entries have the missing coordinates mentioned earlier, which is one of the reasons I chose to remove those entries. 
+
+Reviewing the company's information informed me that rides typically max out at about 3 hours, which is the longest ride you can take without incurring a fee, and that is available with the day pass, that ends at 24 hours. Members can have unlimited 45 minute rides, and single rides are 30 minutes long before incurring a fee. I have chosen to retain the other entries with ride lengths over 24 hours, as while those values seem very unrealistic, and likely values past the 12 hour mark are as well, there is no clear cut-off as to when a ride becomes unrealistic. Ideally I would contact colleagues or management for further information at this point to see if they know more or have a preference about these types of values.
+
+I also found that there are some ride lengths with values less than 0. These are not realistic, and appear to occur for rides with an end time 1 second before the start time. These will not provide any insightful information and should be safe to remove.
+
+## Analyze
+I found several trends in the data. Most rides and most casual rides occur in the summer. There are still some casual riders in the winter, but they’re a very small portion of the total rides. Year round, most casual rides occur in the afternoon. Casual riders prefer the weekends, while members appear to have a slight preference for weekdays. Casual rides tend to be longer than member rides, more than twice as long on average, and with a median length of about 16 minutes compared to 9.5 minutes.
+
+Casual riders have a definite preference for a few specific station locations, namely Streeter Dr & Grand Ave, Millennium Park, Michigan Ave & Oak Street, Theater on the Lake and Shedd Aquarium. Members do not share these station preferences.
+
+```{r Reviewing Data with Newly Calculated Values, eval=FALSE, include=FALSE}
+#A summary of the data as a whole
+summary(cyc_df_comb_clean)
+#It appears that the start time, end time, and ride lengths aren't showing descriptive information in the summary.
+
+
+#Summary of casual riders
+summary(cyc_df_comb_clean[cyc_df_comb_clean$member_casual == 'casual',])
+
+#Summary of members
+summary(cyc_df_comb_clean[cyc_df_comb_clean$member_casual == 'member',])
+```
+```{r Analyzing Data, eval=FALSE, include=FALSE}
+#Plotting out some values of interest
+
+#Plot rides per ride type per month
+ggplot(cyc_df_comb_clean, aes(x = start_month_name, color = member_casual, fill = member_casual)) + geom_bar()
+#It is clear that casual rides mostly take place in the warmer months around summer. They drop off significantly more than member rides during winter.
+
+#Plot distribution of ride type per ride start time
+ggplot(cyc_df_comb_clean, aes(x = started_at_time, color = member_casual, fill = member_casual)) + geom_histogram(bins = 24)
+#It appears most casual rides occur in the afternoon, while members increases more significantly in the morning. Total rides peaks in the late afternoon or early evening.
+
+#Plotting the change in position by ride type
+#ggplot(cyc_df_comb_clean, aes(x = change_tot, color = member_casual)) + geom_area(stat="bin") + facet_wrap(~member_casual)
+#Difficult to plot due to long tail in distance data.
+#cyc_df_comb_clean[cyc_df_comb_clean$change_tot < 0.25,]
+#cyc_df_comb_clean_short_rides <- cyc_df_comb_clean[cyc_df_comb_clean$change_tot < 0.125,]
+#ggplot(cyc_df_comb_clean_short_rides, aes(x = change_tot, fill = member_casual)) + geom_area(stat="bin") + facet_wrap(~member_casual)
+#I think it'd make more sense to simply look at the summary statistics about distance than a chart.
+
+#Plot day of week preference for ride type
+ggplot(cyc_df_comb_clean, aes(x = start_wday, color = member_casual, fill = member_casual)) + geom_bar()
+#There is an obvious preference for Friday, Saturday, and Sunday by casual riders, and a slight preference for weekdays by members.
+
+#Due to the extremem values present in the time and distance data for rides, I looked at the mean and median of those per ride type.
+mean(cyc_df_comb_clean$ride_length) #1247.5s
+mean(cyc_df_comb_clean$change_tot, na.rm=TRUE) #0.0221 na.rm=TRUE is for ignoring the NA values.
+
+cyc_df_comb_clean %>% group_by(member_casual) %>%  summarise_at(vars(ride_length,change_tot),list(mean = mean, median = median), na.rm=TRUE)
+#cyc_df_comb_clean %>% group_by(member_casual) %>%  summarise_at(vars(ride_length,change_tot),list(name = median), na.rm=TRUE)
+#It seems that casual rides tend to be longer, not just in distance but in time as well.
+
+#I wonder if the average ride length of each member type per month would be useful to look at.
+
+#Ok, what about bike type of choice? Does that vary between members and casual riders?
+table(cyc_df_comb_clean$rideable_type,cyc_df_comb_clean$member_casual)
+#Looks like only casual riders use docked bikes?
+cyc_df_comb_clean %>% group_by(member_casual, rideable_type) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n))
+#The preference for both types of riders is for classic bikes, but it also appears that casual riders prefer electric bikes slightly more than members.
+#I could probably use a pie chart for this.
+#Attempting to make a pie chart of this.
+#ggplot(cyc_df_comb_clean, aes(x = rideable_type, fill = rideable_type)) + geom_bar(stat = "count", width = 1) + coord_polar("y", start = 0) + facet_wrap(~member_casual)
+ggplot(cyc_df_comb_clean, aes(x = rideable_type, fill = rideable_type)) + geom_bar() + facet_wrap(~member_casual)
+#Having difficulties making this a pie chart. A bar chart will still be able to convey the message.
+
+#Checking to see if there are any stations that are significantly more popular.
+cyc_df_comb_clean %>% group_by(start_station_name, end_station_name) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% arrange(-n) %>% head(20)
+#This shows us the 20 most popular stations.
+cyc_df_comb_clean %>% subset(member_casual == 'member') %>% group_by(start_station_name) %>% drop_na() %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% arrange(-n) %>% head(10)
+cyc_df_comb_clean %>% subset(member_casual == 'casual') %>% group_by(start_station_name) %>% drop_na() %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% arrange(-n) %>% head(10)
+#Lets also check the end stations
+cyc_df_comb_clean %>% subset(member_casual == 'member') %>% group_by(end_station_name) %>% drop_na() %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% arrange(-n) %>% head(10)
+cyc_df_comb_clean %>% subset(member_casual == 'casual') %>% group_by(end_station_name) %>% drop_na() %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% arrange(-n) %>% head(10)
+#Casual riders have a definite preference for a few specific station locations, namely Streeter Dr & Grand Ave, Millenium Park, and Michigan Ave & Oak Street, but a few others as well. Members do not share these station preferences.
+
+#Is there a gps location preference as well? Perhaps that could be used to determine the station and fill in the missing information.
+
+#How many rides begin and end at the same station/location?
+cyc_df_comb_clean[cyc_df_comb_clean$change_tot == 0,]
+#Nearly 400,000 start and end in the same place.
+cyc_df_comb_clean %>% subset(change_tot == 0) %>% group_by(member_casual) %>% summarise(n = n())
+#More casual riders return to the same location than members, around a 3:2 ratio.
+```
+
+## Share
+
+### What?
+The first main question I asked about the difference in bike usage between rider types was: What? What does each type prefer to do with the bikes? First I checked what bikes each group prefers. Only casual riders use docked bikes. Beyond that, casual riders show a slight preference for classic bikes, while members show a strong preference for classic bikes. 
+
+Following that, I checked the ride length and change in position values for both groups. With ride lengths, the average and median of casual riders is significantly higher, but the values vary much more than with members. With the change in position, which is the change in gps coordinates from start to end of a ride, there is a slightly greater change with casual riders than members, but it is much less pronounced than ride length. So there seems to be a general trend of casual rides being longer in time, but not going much farther in distance.
+
+I also found that many rides begin and end at the same location. I checked this by looking for rides where there was no change in the gps position. We can see that roughly 60% of this group were casual riders and 40% were members.
+
+```{r What Plots for Presentation, echo=FALSE, message=FALSE, warning=FALSE}
+#Plot bike type by rider type
+p5 <- ggplot(cyc_df_comb_clean, aes(x = rideable_type, fill = rideable_type)) + geom_bar() + facet_wrap(~member_casual)
+p5 + labs(title = "Bike Type by Rider Group", x = "Bike Type", y = "Rides") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+#Looking at the mean and median ride length and change in position per rider group. Create aggregate dataframe with those values for plotting.
+#cyc_df_comb_clean %>% group_by(member_casual) %>%  summarise_at(vars(ride_length,change_tot),list(mean = mean, median = median, sd = sd), na.rm=TRUE)
+cyc_agg_df <- cyc_df_comb_clean %>% group_by(member_casual) %>%  summarise_at(vars(ride_length,change_tot),list(mean = mean, median = median), na.rm=TRUE)
+cyc_agg_df$ride_length_median <- seconds(cyc_agg_df$ride_length_median)
+
+#Display the mean ride length values in seconds by rider type.
+p6 <- ggplot(cyc_agg_df, aes(x = member_casual, y = ride_length_mean, fill = member_casual)) + geom_col()
+p6 + labs(title = "Mean Ride Length by Rider Group", x = "", y = "Time in Seconds") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+#Plot the median ride length 
+p7 <- ggplot(cyc_agg_df, aes(x = member_casual, y = ride_length_median, fill = member_casual)) + geom_col()
+p7 + labs(title = "Median Ride Length by Rider Group", x = "", y = "Time in Seconds") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+#Plot mean change in position
+p8 <- ggplot(cyc_agg_df, aes(x = member_casual, y = change_tot_mean, fill = member_casual)) + geom_col()
+p8 + labs(title = "Mean Change in Position by Rider Group", x = "", y = "Change in Position") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+#Plot median change in position
+p9 <- ggplot(cyc_agg_df, aes(x = member_casual, y = change_tot_median, fill = member_casual)) + geom_col()
+p9 + labs(title = "Median Change in Position by Rider Group", x = "", y = "Change in Position") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+#NOTE: Ended up not using the following code. It's interesting but not very useful for conveying the information I need to.
+#I could limit the ride length values to be plotted, which would prevent a problematic tail.
+#Creating a subset of the data with values less than 3600 seconds (1 hour).
+#cyc_df_comb_clean_short_times <- cyc_df_comb_clean[cyc_df_comb_clean$ride_length < 3600,]
+#ggplot(cyc_df_comb_clean_short_times, aes(x = ride_length, fill = member_casual)) + geom_area(stat="bin")
+
+#ggplot(cyc_df_comb_clean_short_times, aes(x = ride_length, fill = member_casual)) + geom_histogram(binwidth=10)
+
+#p6 <- ggplot(cyc_df_comb_clean, aes(x = ride_length, fill = member_casual)) + geom_histogram(bins = 24, color="white")
+#cyc_df_comb_clean_short_rides <- cyc_df_comb_clean[cyc_df_comb_clean$change_tot < 0.1,]
+#ggplot(cyc_df_comb_clean_short_rides, aes(x = change_tot, fill = member_casual)) + geom_area(stat="bin")
+#ggplot(cyc_df_comb_clean_short_rides, aes(x = ride_length, fill = member_casual)) + geom_histogram(binwidth=10)
+
+
+#Many rides begin and end at the same location.
+cyc_df_comb_clean %>% subset(change_tot == 0) %>% group_by(member_casual) %>% summarise(n = n()) %>%  mutate(Freq = n/sum(n)) %>% ggplot(aes(x = member_casual, y = n, fill = member_casual)) + geom_col(position = "dodge") -> p12
+p12 + labs(title = "Rides That Return to Starting Point by Rider Group", x = "", y = "Rides") + theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+### When?
+The next main question I asked was: When? When does each type prefer to use the bikes? I looked at monthly, weekly, and daily preferences. On the monthly chart, we can see that most rides occur in the warmer summer months. Casual rides in particular occur mostly from May to October. Both groups decrease during the colder winter months, but casual rides decrease much more significantly than member rides during that time.
+
+Following the monthly trends we have the weekly trends. Here we see a clear preference by casual riders for the weekend, with higher numbers on Friday, Saturday, and Sunday, and lower numbers during the other weekdays. This trend is slightly reversed for member rides, with more occuring during the weekdays, and fewer rides occurring on Saturday or Sunday.
+
+The daily preferences have some broad trends as well. Both groups have peak rides in the afternoon and evening, but members also have many rides in the morning. We can also see there isn't a substantial difference in when ride start times or end times occur.
+
+```{r When Plots for Presentation, echo=FALSE, message=FALSE, warning=FALSE}
+#Plot rides per ride type per month
+p1 <- ggplot(cyc_df_comb_clean, aes(x = start_month_name, color = member_casual, fill = member_casual)) + geom_bar(position = "dodge")
+p1 + labs(title = "Monthly Rides by Rider Group", y = "Rides", x = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5))
+
+#Plot day of week preference for ride type
+p2 <- ggplot(cyc_df_comb_clean, aes(x = start_wday, color = member_casual, fill = member_casual)) + geom_bar(position = "dodge")
+p2 + labs(title = "Day of Week Rides by Rider Group", y = "Rides", x = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5))
+
+#Plot distribution of ride type per ride start time
+#p3 <- ggplot(cyc_df_comb_clean, aes(x = started_at_time, fill = member_casual)) + geom_histogram(bins = 24, color="white")
+#p3 + labs(title = "Daily Start Times by Rider Group", y = "Rides") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5))
+
+p4 <- ggplot(cyc_df_comb_clean, aes(x = started_at_time, fill = member_casual)) + geom_histogram(bins = 24, color="white") + facet_wrap(~member_casual)
+p4 + labs(title = "Daily Start Times by Rider Group", y = "Rides", x = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5))
+
+p3 <- ggplot(cyc_df_comb_clean, aes(x = ended_at_time, fill = member_casual)) + geom_histogram(bins = 24, color="white") + facet_wrap(~member_casual)
+p3 + labs(title = "Daily End Times by Rider Group", y = "Rides", x = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5))
+```
+
+### Where?
+The last main question I asked on was: Where? Where does each type prefer to use the bikes? I looked at the top stations for each group. Both have different preferences here. The five most popular stations for casual riders are Streeter Dr & Grand Ave, Millennium Park, Michigan Ave & Oak Street, Theater on the Lake and Shedd Aquarium. Streeter Dr & Grand Ave in particular is significantly more popular than other stations. While there are some stations that are more popular with members, the difference is not nearly as large. It should also be noticed that this does not reflect all of the data, as roughly 750,000 start and end station values were not recorded for electric bikes, which is roughly 12% of the overall data.
+
+```{r Where Plots for Presentation, echo=FALSE, message=FALSE, warning=FALSE}
+#I want to display the most popular stations.
+#It would be really nice to show a chart with a map of the most popular routes for each group, but that is going to be a bit complicated. Something for a future try of this same case study perhaps.
+
+
+#cyc_df_comb_clean %>% group_by(end_station_name) %>% summarise(n = n()) %>% arrange(-n) %>% head(10)
+#What is it I'm wanting to show here. The most popular stations showing visit counts, with the data partitioned by member_casual.
+
+cyc_df_comb_clean %>% filter(!is.na(start_station_name)) %>% group_by(start_station_name, member_casual) %>% summarise(n = n()) %>% arrange(-n) %>% head(10) %>% ggplot(aes(x = start_station_name, y = n, fill = member_casual)) + geom_col(position = "dodge") -> p10
+p10 + labs(title = "Most Popular Start Stations by Rider Group", x = "Start Station", y = "Rides") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5),axis.text.x = element_text(angle = 30, margin = margin(t = 20)))
+
+cyc_df_comb_clean %>% filter(!is.na(end_station_name)) %>% group_by(end_station_name, member_casual) %>% summarise(n = n()) %>% arrange(-n) %>% head(10) %>% ggplot(aes(x = end_station_name, y = n, fill = member_casual)) + geom_col(position = "dodge") -> p11
+p11 + labs(title = "Most Popular End Stations by Rider Group", x = "End Station", y = "Rides") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5),axis.text.x = element_text(angle = 30, margin = margin(t = 20))) #+ scale_x_discrete(guide = guide_axis(n.dodge=3))
+
+#Perhaps I could approach this a different way, counting the most popular stations and then splitting by group?
+#ggplot(cyc_df_comb_clean, aes(x = start_month_name, color = member_casual, fill = member_casual)) + geom_bar(position = "dodge")
+```
+
+## Act
+My recommendations are to focus on the when first. Members use cyclistic bikes more consistently through the year, week, and day. From our data we also know when most casual rides occur as well, how most occur during warmer summer months, on weekends, and in the afternoon and evenings.
+
+Second, we also know that members prefer classic bikes compared to ebikes, and that casual rides have a much lower preference for classic bikes while also being the only users of docked bikes.
+
+Third, we know that some of our stations are significantly more popular with casual riders, and that member rides don’t have as much of a focus on specific stations. We also know that casual riders will tend to return to their start location more, and that there isn’t a very pronounced difference in the change in position with each group.
+
+With all of this in mind, we should be able to begin answering the next question in our marketing program: Why would casual riders buy Cyclistic annual memberships?
