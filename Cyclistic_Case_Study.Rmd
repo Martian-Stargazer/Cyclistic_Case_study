@@ -2,7 +2,9 @@
 title: "Cyclistic Case Study"
 author: "Ian Morris"
 date: '2022-03-25'
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 # Introduction
@@ -128,7 +130,7 @@ The results of this initial processing were saved as a new data frame before pro
 #Removing the test entry and any entries with missing end coordinate values. The rides with missing end values seem potentially unreliable and make up a small portion of the data set. Saving into new data frame.
 cyc_df_comb_clean <- subset(cyc_df_combined, start_lat != max(cyc_df_combined$start_lat))
 cyc_df_comb_clean <- cyc_df_comb_clean %>% drop_na(end_lat)
-summary(cyc_df_comb_clean)
+#summary(cyc_df_comb_clean)
 ```
 
 ### Creating new columns
@@ -375,16 +377,16 @@ The last main question I asked on was: Where? Where does each type prefer to use
 
 #Plotting the number of rides by start station and customer type
 cyc_df_comb_clean %>% filter(!is.na(start_station_name)) %>% group_by(start_station_name, member_casual) %>% summarise(n = n()) %>% arrange(-n) %>% head(10) %>% ggplot(aes(y = reorder(start_station_name, n), x = n, fill = member_casual)) + geom_col(position = "dodge") -> p10
-p10 + labs(title = "Most Popular Start Stations by Customer Type", y = "", x = "Rides") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0),axis.ticks.x=element_blank(),axis.text.x=element_blank(), axis.text.y = element_text(hjust = 0))
+p10 + labs(title = "Most Popular Start Stations by Customer Type", y = "", x = "Number of Rides") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0),axis.ticks.x=element_blank(), axis.text.y = element_text(hjust = 0))
 #,axis.text.x = element_text(angle = 30, margin = margin(t = 20))
 
 #Plotting the number of rides by end station and customer type
 cyc_df_comb_clean %>% filter(!is.na(end_station_name)) %>% group_by(end_station_name, member_casual) %>% summarise(n = n()) %>% arrange(-n) %>% head(10) %>% ggplot(aes(x = n, y = reorder(end_station_name,n), fill = member_casual)) + geom_col(position = "dodge") -> p11
-p11 + labs(title = "Most Popular End Stations by Customer Type", x = "Rides", y = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0),axis.ticks.x=element_blank(),axis.text.x=element_blank(), axis.text.y = element_text(hjust = 0)) #+ scale_x_discrete(guide = guide_axis(n.dodge=3))
+p11 + labs(title = "Most Popular End Stations by Customer Type", x = "Number of Rides", y = "") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0),axis.ticks.x=element_blank(), axis.text.y = element_text(hjust = 0)) #+ scale_x_discrete(guide = guide_axis(n.dodge=3))
 
 #While reviewing the data, I asked if there are any popular trips, which would be rides that start and end at the same station.
 cyc_df_comb_clean %>% filter(!is.na(end_station_name),!is.na(start_station_name)) %>% group_by(station_trip = paste(start_station_name, end_station_name, sep = " to "), member_casual) %>% summarise(n = n()) %>% arrange(-n) %>% head(10) %>% ggplot(aes(x = n, y = reorder(station_trip,n), fill = member_casual)) + geom_col(position = "dodge") -> p16
-p16 + labs(title = "Most Popular Trips by Customer Type", x = "", y = "", subtitle = "From Start Station to End Station") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0), plot.subtitle = element_text(hjust = 0), axis.ticks.x=element_blank(), axis.text.x=element_blank(), axis.text.y = element_text(hjust = 0))
+p16 + labs(title = "Most Popular Trips by Customer Type", x = "Number of Rides", y = "", subtitle = "From Start Station to End Station") + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0), plot.subtitle = element_text(hjust = 0), axis.ticks.x=element_blank(), axis.text.y = element_text(hjust = 0))
 #This is very interesting. It appears that the most popular station trips for casual riders begin or end in the same place, while for members, they have pairs of trips, beginning and ending in the same place and then vice versa.
 
 #Perhaps I could approach this a different way, counting the most popular stations and then splitting by group?
@@ -394,7 +396,7 @@ p16 + labs(title = "Most Popular Trips by Customer Type", x = "", y = "", subtit
 It should also be noted that this does not reflect all of the data, as roughly 750,000 start and end station values were not recorded for electric bikes, which is roughly 12% of the overall data.
 
 ## Act
-My recommendations are to focus on the when first. Members use cyclistic bikes more consistently through the year, week, and day. From our data we also know when most casual rides occur as well, how most occur during warmer summer months, on weekends, and in the afternoon and evenings.
+My recommendations are to focus on the when first. Members use Cyclistic bikes more consistently through the year, week, and day. From our data we also know when most casual rides occur as well, how most occur during warmer summer months, on weekends, and in the afternoon and evenings.
 
 Second, we also know that members prefer classic bikes compared to ebikes, and that casual rides have a much lower preference for classic bikes while also being the only users of docked bikes.
 
